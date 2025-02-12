@@ -1,0 +1,453 @@
+DPLDM = function(Y, x, regressora1, regressora2, lags, lag_frio, lag_calor, d, fd_nivel, fd_temperatura, fd_phi, quantil_frio, quantil_calor){
+  
+  library(tidyverse)
+  library(MASS)
+  library(Matrix)
+  library(corpcor)
+  library(mvtnorm)
+  library(scales)
+  
+  set.seed(1)
+  
+  
+  # base_resp <- base_resp[base_resp$DT_INTER >= as.Date("2019-01-01") & base_resp$DT_INTER <= as.Date("2019-11-30"), ]
+  
+  # Y = base_resp$taxa_inter
+  # x = base_resp$DT_INTER
+  # regressora1 = base_resp$pm25_ugm3_medio
+  # regressora2 = base_resp$umidade_relativa_percentual_media
+  # regressora3 = base_resp$temperatura_c_media
+  # lags = 15
+  # lag_umidade = 1
+  # lag_temperatura = 25
+  # d = 2
+  # fd_nivel = 0.98
+  # fd_umidade = 0.99
+  # fd_temperatura = 0.99
+  # fd_phi = 0.99
+  # umidade_corte = 91
+  # temperatura_intervalo = c(17.5,21)
+
+  #dimensão do vetor beta
+  q = lags + 1 #inclui o beta0, mas não intercepto
+  
+  #Definindo X e Y
+  
+  time = length(Y) #tamanho da série
+  
+  #montando a matriz de regressoras defasadas
+  
+  X = matrix(nrow = time,
+             ncol = q)
+  
+  X[,1] = regressora1 #lag 0
+  
+  for (i in 2:q){
+    
+    X[,i] = dplyr::lag(regressora1, i-1)
+    
+  }
+  
+  #Defasagem da umidade e temperatura
+  frio = dplyr::lag(regressora2, lag_frio)
+  calor = dplyr::lag(regressora2, lag_calor)
+  
+  #X e U efetivo (sem os NA's que aparecem ao defasar X)
+  
+  defasagem = max(lags,lag_frio, lag_calor)
+  
+  X = X[-c(1:(defasagem)),]
+  frio = frio[-c(1:(defasagem))]
+  calor = calor[-c(1:(defasagem))]
+  frio = ifelse(frio < quantile(frio, quantil_frio), 1, 0)
+  calor = ifelse(calor > quantile(calor, quantil_calor), 1, 0)
+  
+  #tirando os valores de Y de acordo com os lags
+  
+  Y = Y[-c(1:(defasagem))]
+  
+  time = length(Y) #nova dimensão de Y
+  
+  #contruindo o St,i
+  
+  #grau do polinômio d
+  
+  v = c(1:(q-1)) #vetor que multiplica cada matriz (vide as contas na folha)
+  
+  if(d == 2){
+    
+    St0 = apply(X,1,sum)
+    St1 = X[,-1]%*%v^1
+    St2 = X[,-1]%*%v^2
+    
+  }
+  else if(d == 3){
+    
+    St0 = apply(X,1,sum)
+    St1 = X[,-1]%*%v^1
+    St2 = X[,-1]%*%v^2
+    St3 = X[,-1]%*%v^3 
+    
+  }
+  
+  ########### ESTIMANDO A SERIE
+  
+  if(d == 2){
+    n = 6 # Dimensão do vetor dos parâmetros a cada tempo (incluindo o intercepto e da umidade)
+  }
+  else if(d == 3){
+    
+    n = 7 # Dimensão do vetor dos parâmetros a cada tempo (incluindo o intercepto e da umidade)
+  }
+  
+  if(d == 2){
+    #vetor F
+    
+    Ft = matrix(rep(1),n,time)
+    
+    DP = c(sd(St0),sd(St1),sd(St2))
+    
+    Ft[2,] = St0/sd(St0)
+    Ft[3,] = St1/sd(St1)
+    Ft[4,] = St2/sd(St2)
+    Ft[5,] = frio
+    Ft[6,] = calor
+    
+  }
+  else if(d == 3){
+    
+    #vetor F
+    
+    Ft = matrix(rep(1),n,time)
+    
+    DP = c(sd(St0),sd(St1),sd(St2),sd(St3))
+    
+    Ft[2,] = St0/sd(St0)
+    Ft[3,] = St1/sd(St1)
+    Ft[4,] = St2/sd(St2)
+    Ft[5,] = St3/sd(St3)
+    Ft[6,] = frio
+    Ft[7,] = calor
+    
+  }
+  
+  #Bloco da G para o nível
+  
+  G1 = diag(rep(1,1))
+  
+  #Bloco da G para as regressoras
+  
+  G2 = diag(c(rep(1,n-1))) #d+1 temos que contar o polinomio de grau 0, isto é, St0
+  
+  # Bloco da G para a sazonalidade, com h = (p-1)/2 por p ser ímpar
+  
+  # w1=(2*pi)/(7/1)
+  # G3=matrix(c(cos(w1),-sin(w1),sin(w1),cos(w1)),2,2)
+  # G3
+  # w2=(2*pi)/(7/2)
+  # G4=matrix(c(cos(w2),-sin(w2),sin(w2),cos(w2)),2,2)
+  # G4
+  # w3=(2*pi)/(7/3)
+  # G5=matrix(c(cos(w3),-sin(w3),sin(w3),cos(w3)),2,2)
+  # G5
+  
+  #matriz G
+  
+  Gt = bdiag(G1, G2)
+  Gt = array(as.matrix(Gt), dim = c(n,n,time))
+  
+  ############ Filtro de Kalman
+  
+  ############# Utilizando fator de desconto (único para cada bloco)
+  
+  #Bloco do nível
+  
+  d1 = fd_nivel
+  
+  #Bloco da regressora1 (distribuída)
+  
+  d2 = 1
+  
+  #Bloco da regressora2 
+  
+  d3 = fd_temperatura 
+  
+  # Desconto de phi
+  d4 = fd_phi
+  
+  # Bloco da regressora3
+  
+  d5 = fd_temperatura
+  
+  #Juntando tudo
+  
+  D = diag(c(d1, rep(d2, n-3), d3, d5))
+  D_inv = solve(D)
+  
+  #Criando os componentes
+  
+  at = array(NA, dim=c(n,1,time))
+  Rt = array(NA, dim=c(n,n,time))
+  
+  mt = array(NA, dim=c(n,1,time))
+  Ct = array(NA, dim=c(n,n,time))
+  
+  ft = rep(NA, time)
+  Qt = rep(NA, time)
+  
+  et = rep(NA, time)
+  At = array(NA, dim=c(n,1,time))
+  
+  St = rep(NA,time)
+  nt = rep(NA,time)
+  
+  ####### Passo t  = 0
+  
+  m0 = c(rep(0, n))
+  C0 = diag(c(rep(2, n)), n, n)
+  
+  n0 = 4
+  S0 = 0.1
+  
+  ### Passo t=1
+  
+  #Passo t = 1
+  
+  at[,,1] = Gt[,,1]%*%m0
+  Rt[,,1] = (Gt[,,1]%*%C0%*%t(Gt[,,1])) + (D_inv-diag(1, n))*(Gt[,,1]%*%C0%*%t(Gt[,,1]))
+  
+  ft[1] = t(Ft[,1])%*%at[,,1]
+  Qt[1] = t(Ft[,1])%*%Rt[,,1]%*%Ft[,1] + S0
+  
+  et[1] = Y[1] - ft[1]
+  At[,,1] = Rt[,,1]%*%Ft[,1]/Qt[1]
+  
+  nt[1] = d4*n0 + 1
+  St[1] = S0 + S0/nt[1]*(et[1]^2/Qt[1] - 1)
+  
+  mt[,,1] = at[,,1] + At[,,1]*et[1]
+  Ct[,,1] = St[1]/S0*(Rt[,,1] - At[,,1]%*%t(At[,,1])*Qt[1])
+  
+  #Passo t de 2 a time
+  
+  for (t in 2:time){
+    
+    at[,,t] = Gt[,,t]%*%mt[,,t-1]
+    Rt[,,t] = Gt[,,t]%*%Ct[,,t-1]%*%t(Gt[,,t]) + (D_inv-diag(1, n))*(Gt[,,t]%*%Ct[,,t-1]%*%t(Gt[,,t]))
+    
+    ft[t] = t(Ft[,t])%*%at[,,t]
+    Qt[t] = t(Ft[,t])%*%Rt[,,t]%*%Ft[,t] + St[t-1]
+    
+    et[t] = Y[t] - ft[t]
+    At[,,t] = Rt[,,t]%*%Ft[,t]/Qt[t]
+    
+    nt[t] = d4*nt[t-1] + 1
+    St[t] = St[t-1] + St[t-1]/nt[t]*(et[t]^2/Qt[t] - 1)
+    
+    mt[,,t] = at[,,t] + At[,,t]*et[t]
+    Ct[,,t] = (St[t]/St[t-1])*(Rt[,,t] - At[,,t]%*%t(At[,,t])*Qt[t])
+  }
+
+  ##### Suavização
+  
+  #definindo Bt:
+  Bt = array(NA, dim=c(n,n,time))
+  
+  mts = mt 
+  Cts = Ct
+  Sts_inv = 1/St 
+  Sts = St
+  nts = nt
+  
+  for (k in 1:(time-1)){
+    Bt[,,time-k] = Ct[,,time-k]%*%t(Gt[,,time-k+1])%*%solve(Rt[,,time-k+1])
+    mts[,,time-k] = mt[,,time-k] + Bt[,,time-k]%*%(mts[,,time-k+1] - at[,,time-k+1])
+    Cts[,,time-k] = Ct[,,time-k] + Bt[,,time-k]%*%(Cts[,,time-k+1] - Rt[,,time-k+1])%*%t(Bt[,,time-k])
+    
+    Sts_inv[time-k] = (1-d4)*1/St[time-k] + d4*1/St[time-k+1] 
+    Sts[time-k] = 1/Sts_inv[time-k]
+    nts[time-k] = (1-d4)*nt[time-k] + d4*nt[time-k+1] 
+    
+    if(is.positive.definite(Cts[,,time-k]) == F){Cts[,,time-k] = make.positive.definite(Cts[,,time-k])}
+  }
+
+  #Amotrando thetha
+  
+  amostra_theta = array(NA, dim = c(1000, n, time))
+  
+  #no tempo t = 1
+  amostra_theta[,,1] = rmvt(1000, delta = mts[,,1], sigma = Sts[1]/S0*Cts[,,1], df = nts[1])
+  
+  #no tempo t = 2 em diante
+  for(i in 2:time){
+    if(isSymmetric(Cts[,,i]) == F){
+      upper_tri <- upper.tri(Cts[,,i])
+      # Tornando a matriz simétrica
+      Cts[,,i] <- Cts[,,i] * upper_tri + t(Cts[,,i]) * (1 - upper_tri)
+    }
+    
+    amostra_theta[,,i] = rmvt(1000, delta = mts[,,i], sigma = Sts[i]/Sts[i-1]*Cts[,,i], df = nts[i])
+  }
+  
+  
+  # retomando as escalas
+  
+  for(i in 1:time){
+    amostra_theta[,,i] = t(t(amostra_theta[,,i])/c(1,DP,1,1))
+  }
+  
+  
+  #amostra do intercepto (alpha) estimado
+  
+  amostra_alpha = matrix(NA, nrow = 1000, ncol = time)
+  for (i in 1:time){
+    amostra_alpha[,i] = amostra_theta[,1,i]
+  }
+  
+  #amostra do vetor eta
+  
+  amostra_eta = amostra_theta[,c(2:(n-2)),time]
+  
+  #amostra do vetor beta (nas análises seguintes eu pego sempre o último vetor estimado, pois como ele é constante, eu devo pegar o mais atualizado)
+  
+  #matriz auxiliar
+  m = matrix(1, nrow = q,
+             ncol = n-3)
+  
+  if(d ==2){
+    m[1,] = c(1,0,0)
+  } else if(d == 3){
+    m[1,] = c(1,0,0,0)
+  }
+  
+  for (i in 2:(n-3)){
+    for (j in 1:(q-1)){
+      
+      m[j+1,i] = j^(i-1)
+      
+    }
+  }
+  
+  amostra_beta = amostra_eta%*%t(m)*sd(regressora1) #multiplicando pelo desvio padrão do pm2.5
+  
+  #amostra gamma
+  amostra_gamma = matrix(NA, nrow = 1000, ncol = time)
+  for(i in 1:time){
+    amostra_gamma[,i] = amostra_theta[,n-1,i]
+  }
+  
+  #amostra psi
+  amostra_psi = matrix(NA, nrow = 1000, ncol = time)
+  for(i in 1:time){
+    amostra_psi[,i] = amostra_theta[,n,i]
+  }
+  
+  #y estimado
+  mu = phi = c()
+  
+  for (i in 1:time){
+    mu[i] = t(Ft[,i])%*%mts[,,i]
+    phi[i] = qgamma(0.5, nts[i]/2, nts[i]*Sts[i]/2)
+  }
+  
+  y_estimado = qnorm(0.5,mu,sqrt(1/phi))
+  ic_inf_y = qnorm(0.025,mu,sqrt(1/phi))
+  ic_sup_y = qnorm(0.975,mu,sqrt(1/phi))
+  
+  
+  ############### Intervalo de Credibilidade de 95% ##########
+  
+  #Pego o beta mais atualizado, pois ele é constante ao longo do tempo
+  
+  # Veja que podemos observar os efeitos por meio da variação do pm2.5
+  ic_inf_beta = apply(amostra_beta, MARGIN = 2, FUN = quantile, probs = 0.025)
+  beta_estimado = apply(amostra_beta, MARGIN = 2, FUN = quantile, probs = 0.5)
+  ic_sup_beta = apply(amostra_beta, MARGIN = 2, FUN = quantile, probs = 0.975)
+  
+  #### Y estimado
+  
+  g1 = ggplot(NULL,
+              aes(x = x[-c(1:(defasagem))])) +
+    geom_line(aes(y = Y, color = "Observações"), size = 2) +
+    geom_line(aes(y = y_estimado, color = "Estimativas"), size = 2) +
+    geom_ribbon(aes(ymin = ic_inf_y, ymax = ic_sup_y,
+                    fill = "IC 95%"),
+                alpha = 0.3) +
+    geom_hline(yintercept = 0) +
+    labs(x = "Mês-Ano",
+         y = "T. de Internação p/ 100 mil hab.",
+         colour = "") +
+    theme_minimal() +
+    theme(axis.title.x = element_text(size = 45),
+          axis.text = element_text(size = 45,
+                                   angle = 90),
+          legend.text=element_text(size= 30),
+          legend.title = element_blank(),
+          legend.position = "bottom",
+          axis.title.y = element_text(hjust = 1,
+                                      size = 40)) +
+    scale_y_continuous(limits = c(0,4.5)) +
+    scale_x_date(labels = scales::date_format("%m-%Y"),
+                 breaks = seq(from = min(base_resp$DT_INTER),
+                              to = max(base_resp$DT_INTER),
+                              by = "1 month")) +
+    scale_color_manual(values = c("Observações" = "black", "Estimativas" = "red"),
+                       breaks = c("Estimativas", "Observações")) +
+    scale_fill_manual(values = c("IC 95%" = "blue"))
+  
+  ############ Gr�fico dos betas estimados #########
+  g2 = ggplot(NULL,
+              aes(x = 0:(q-1))) +
+    geom_point(aes(y = beta_estimado), size = 8) +
+    geom_errorbar(aes(ymin = ic_inf_beta, ymax = ic_sup_beta),
+                  width = 0.5, size = 2) +
+    geom_hline(yintercept = 0, col = "red", linewidth = 1) +
+    labs(x = "Lags",
+         y = bquote(beta),
+         colour = "") +
+    theme_hc(base_size = 1) +
+    theme(axis.title = element_text(size = 45),
+          axis.text = element_text(size = 45),
+          legend.text=element_text(size= 40),
+          legend.title = element_text(size = 45),
+          legend.position = NULL,
+          panel.grid = element_line(linewidth = 1)) +
+    scale_x_continuous(breaks = seq(0, (q-1), by = 1)) +
+    scale_y_continuous(
+      breaks = pretty(range(ic_inf_beta, ic_sup_beta)),
+      labels = label_number(decimal.mark = ","),
+      limits = range(ic_inf_beta, ic_sup_beta) + c(-0.005, 0.005)
+    )
+  
+  print(g1)
+  print(g2)
+  
+  #### Métricas
+  
+  mape = sum(abs((Y-y_estimado)/Y))/time * 100
+  
+  print(paste("MAPE: ", mape))
+  
+  #### Interval Score
+  interval_score = (ic_sup_y - ic_inf_y) + 2/0.05*(ic_inf_y - Y)*(Y < ic_inf_y) + 
+    + 2/0.05*(Y - ic_sup_y)*(Y > ic_sup_y)
+
+  ######## log_vero
+  
+  SOMA <- function(MAT,Y,mu){
+    soma <- sum(dnorm(Y,mu,sqrt(MAT),log=TRUE))
+    return(soma)
+  }
+  
+  print(paste("Log-Verossimilhança Preditiva: ", SOMA(Qt,Y,ft)))
+  print(paste("Interval Score: ", sum(interval_score)))
+  print(paste("DP do PM2.5: ", sd(regressora1)))
+  print(paste("Efeito Médio do Frio: ", mts[n-1,,time]))
+  print(paste("Efeito Médio da Calor: ", mts[n,,time]))
+  print(paste("IC 95% Frio: ", c(quantile(amostra_gamma[,time], 0.025), quantile(amostra_gamma[,time], 0.975))))
+  print(paste("IC 95% Calor: ", c(quantile(amostra_psi[,time], 0.025), quantile(amostra_psi[,time], 0.975))))
+  return(list(beta_estimado,
+              ic_inf_beta,
+              ic_sup_beta))
+}
+
