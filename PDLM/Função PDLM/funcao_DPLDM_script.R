@@ -9,14 +9,6 @@ DPLDM = function(Y, x, regressora, lags, d, fd_nivel, fd_phi){
   library(mvtnorm)
   library(scales)
   library(ggthemes)
-
-  # Y = base_resp$taxa_inter
-  # x = base_resp$DT_INTER
-  # regressora = base_resp$pm25_ugm3_medio
-  # lags = 5
-  # d = 2
-  # fd_nivel = 1
-  # fd_phi = 1
   
   #dimensão do vetor beta
   q = lags + 1 #inclui o beta0, mas não intercepto
@@ -38,8 +30,6 @@ DPLDM = function(Y, x, regressora, lags, d, fd_nivel, fd_phi){
     
   }
   
-  #X e U efetivo (sem os NA's que aparecem ao defasar X)
-  
   X = X[-c(1:(q-1)),]
   
   #tirando os valores de Y de acordo com os lags
@@ -52,7 +42,7 @@ DPLDM = function(Y, x, regressora, lags, d, fd_nivel, fd_phi){
   
   #grau do polinômio d
   
-  v = c(1:(q-1)) #vetor que multiplica cada matriz (vide as contas na folha)
+  v = c(1:(q-1)) #vetor que multiplica cada matriz para obtermos as somas polinomiais
   
   if(d == 2){
     
@@ -72,10 +62,10 @@ DPLDM = function(Y, x, regressora, lags, d, fd_nivel, fd_phi){
   ########### ESTIMANDO A SERIE
   
   if(d == 2){
-    n = 4 # Dimensão do vetor dos parâmetros a cada tempo (incluindo o intercepto e da umidade)
+    n = 4 # Dimensão do vetor dos parâmetros a cada tempo (incluindo o intercepto)
   } else{
     
-    n = 5 # Dimensão do vetor dos parâmetros a cada tempo (incluindo o intercepto e da umidade)
+    n = 5
   }
   
   if(d == 2){
@@ -110,19 +100,7 @@ DPLDM = function(Y, x, regressora, lags, d, fd_nivel, fd_phi){
   
   #Bloco da G para as regressoras
   
-  G2 = diag(c(rep(1,n-1))) #d+1 temos que contar o polinomio de grau 0, isto é, St0
-  
-  # Bloco da G para a sazonalidade, com h = (p-1)/2 por p ser ímpar
-  
-  # w1=(2*pi)/(7/1)
-  # G3=matrix(c(cos(w1),-sin(w1),sin(w1),cos(w1)),2,2)
-  # G3
-  # w2=(2*pi)/(7/2)
-  # G4=matrix(c(cos(w2),-sin(w2),sin(w2),cos(w2)),2,2)
-  # G4
-  # w3=(2*pi)/(7/3)
-  # G5=matrix(c(cos(w3),-sin(w3),sin(w3),cos(w3)),2,2)
-  # G5
+  G2 = diag(c(rep(1,n-1)))
   
   #matriz G
   
@@ -135,19 +113,19 @@ DPLDM = function(Y, x, regressora, lags, d, fd_nivel, fd_phi){
   
     #Bloco do nível
     
-    d1 = fd_nivel
+    d1 = 1/fd_nivel - 1
     
-    #Bloco da regressora1
+    #Bloco das regressoras
     
-    d2 = 1/1
-    
-    # Desconto de phi
-    d3 = fd_phi
+    d2 = matrix(1/1 - 1, n-1, n-1)
     
     #Juntando tudo
     
-    D = diag(c(d1, rep(d2, n-1)))
-    D_inv = solve(D)
+    D = bdiag(d1, d2)
+    D = as.matrix(D)
+    
+    # Desconto de phi (precisão observacional)
+    d3 = fd_phi
     
     #Criando os componentes
     
@@ -179,7 +157,7 @@ DPLDM = function(Y, x, regressora, lags, d, fd_nivel, fd_phi){
     #Passo t = 1
     
     at[,,1] = Gt[,,1]%*%m0
-    Rt[,,1] = (Gt[,,1]%*%C0%*%t(Gt[,,1])) + (D_inv-diag(1, n))*(Gt[,,1]%*%C0%*%t(Gt[,,1]))
+    Rt[,,1] = (Gt[,,1]%*%C0%*%t(Gt[,,1])) + D*(Gt[,,1]%*%C0%*%t(Gt[,,1]))
     
     ft[1] = t(Ft[,1])%*%at[,,1]
     Qt[1] = t(Ft[,1])%*%Rt[,,1]%*%Ft[,1] + S0
@@ -198,7 +176,7 @@ DPLDM = function(Y, x, regressora, lags, d, fd_nivel, fd_phi){
     for (t in 2:time){
       
       at[,,t] = Gt[,,t]%*%mt[,,t-1]
-      Rt[,,t] = Gt[,,t]%*%Ct[,,t-1]%*%t(Gt[,,t]) + (D_inv-diag(1, n))*(Gt[,,t]%*%Ct[,,t-1]%*%t(Gt[,,t]))
+      Rt[,,t] = Gt[,,t]%*%Ct[,,t-1]%*%t(Gt[,,t]) + D*(Gt[,,t]%*%Ct[,,t-1]%*%t(Gt[,,t]))
       
       ft[t] = t(Ft[,t])%*%at[,,t]
       Qt[t] = t(Ft[,t])%*%Rt[,,t]%*%Ft[,t] + St[t-1]
@@ -415,13 +393,12 @@ DPLDM = function(Y, x, regressora, lags, d, fd_nivel, fd_phi){
   }
   
   print(paste("Log-Verossimilhança Preditiva: ", SOMA(Qt,Y,ft)))
-#  print(paste("Log-Verossimilhança a Posteriori: ", SOMA(1/phi,Y,y_estimado)))
   print(paste("Interval Score: ", sum(interval_score)))
   print(paste("DP do PM2.5: ", sd(regressora)))
   print(paste("Efeito médio acumulado: ", as.numeric(quantile(rowSums(amostra_beta[,ic_inf_beta > 0]), 0.5))))
   print(paste("IC_inf_acumulado: ", as.numeric(quantile(rowSums(amostra_beta[,ic_inf_beta > 0]), 0.025))))
   print(paste("IC_sup_acumulado: ", as.numeric(quantile(rowSums(amostra_beta[,ic_inf_beta > 0]), 0.975))))
-  # # 
+
   return(list(beta_estimado,
               ic_inf_beta,
               ic_sup_beta))

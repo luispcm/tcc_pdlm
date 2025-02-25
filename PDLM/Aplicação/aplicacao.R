@@ -9,7 +9,7 @@ p_load("tidyverse",
 memory.limit(9999999999)
 
 SP_bruto_2019 = fetch_datasus(year_start = 2018,
-                              month_start = 1,   #Tirei o primeiro mês para não pegar ano epidemiológico de 2017 e tirei o mês de outubro a dezembro de 2019 porque há uma queda brusca que pode ser um erro
+                              month_start = 1,
                               year_end = 2019,
                               month_end = 12,
                               uf = "SP",
@@ -297,6 +297,5 @@ DPLDM(Y = base_resp$taxa_inter,
       d = 3,
       fd_nivel = 0.96,
       fd_phi = 0.99,
-      fd_temperatura = 1,
       quantil_corte = 0.85)
 

@@ -10,22 +10,6 @@ DPLDM = function(Y, x, regressora1, regressora2, lags, lag_temperatura, d, fd_ni
   
   set.seed(1)
   
-  # Y = base_resp$taxa_inter
-  # x = base_resp$DT_INTER
-  # regressora1 = base_resp$pm25_ugm3_medio
-  # regressora2 = base_resp$umidade_relativa_percentual_media
-  # regressora3 = base_resp$temperatura_c_media
-  # lags = 15
-  # lag_umidade = 1
-  # lag_temperatura = 25
-  # d = 2
-  # fd_nivel = 0.98
-  # fd_umidade = 1
-  # fd_temperatura = 1
-  # fd_phi = 0.99
-  # umidade_corte = 91
-  # temperatura_intervalo = c(17.5,21)
-  
   #dimensão do vetor beta
   q = lags + 1 #inclui o beta0, mas não intercepto
   
@@ -46,10 +30,8 @@ DPLDM = function(Y, x, regressora1, regressora2, lags, lag_temperatura, d, fd_ni
     
   }
   
-  #Defasagem da umidade e temperatura
+  #Defasagem da temperatura
   H = dplyr::lag(regressora2, lag_temperatura)
-  
-  #X e U efetivo (sem os NA's que aparecem ao defasar X)
   
   defasagem = max(lags,lag_temperatura)
   
@@ -68,7 +50,7 @@ DPLDM = function(Y, x, regressora1, regressora2, lags, lag_temperatura, d, fd_ni
   
   #grau do polinômio d
   
-  v = c(1:(q-1)) #vetor que multiplica cada matriz (vide as contas na folha)
+  v = c(1:(q-1)) #vetor que multiplica cada matriz para construção das somas polinomiais
   
   if(d == 2){
     
@@ -88,10 +70,10 @@ DPLDM = function(Y, x, regressora1, regressora2, lags, lag_temperatura, d, fd_ni
   ########### ESTIMANDO A SERIE
   
   if(d == 2){
-    n = 5 # Dimensão do vetor dos parâmetros a cada tempo (incluindo o intercepto e da umidade)
+    n = 5 # Dimensão do vetor dos parâmetros a cada tempo (incluindo o intercepto e efeito médio da temperatura)
   } else{
     
-    n = 6 # Dimensão do vetor dos parâmetros a cada tempo (incluindo o intercepto e da umidade)
+    n = 6
   }
   
   if(d == 2){
@@ -128,7 +110,7 @@ DPLDM = function(Y, x, regressora1, regressora2, lags, lag_temperatura, d, fd_ni
   
   #Bloco da G para as regressoras
   
-  G2 = diag(c(rep(1,n-1))) #d+1 temos que contar o polinomio de grau 0, isto é, St0
+  G2 = diag(c(rep(1,n-1)))
   
   #matriz G
   
@@ -141,23 +123,17 @@ DPLDM = function(Y, x, regressora1, regressora2, lags, lag_temperatura, d, fd_ni
   
   #Bloco do nível
   
-  d1 = fd_nivel
+  d1 = 1/fd_nivel - 1
   
-  #Bloco da regressora1 (distribuída)
+  #Bloco das regressoras
   
-  d2 = 1
+  d2 = matrix(1/1 - 1, n-1, n-1)
   
-  #Bloco da regressora2 
-  
-  d3 = fd_temperatura 
+  D = bdiag(d1, d2)
+  D = as.matrix(D)
   
   # Desconto de phi
   d4 = fd_phi
-  
-  #Juntando tudo
-  
-  D = diag(c(d1, rep(d2, n-2), d3))
-  D_inv = solve(D)
   
   #Criando os componentes
   
@@ -189,7 +165,7 @@ DPLDM = function(Y, x, regressora1, regressora2, lags, lag_temperatura, d, fd_ni
   #Passo t = 1
   
   at[,,1] = Gt[,,1]%*%m0
-  Rt[,,1] = (Gt[,,1]%*%C0%*%t(Gt[,,1])) + (D_inv-diag(1, n))*(Gt[,,1]%*%C0%*%t(Gt[,,1]))
+  Rt[,,1] = (Gt[,,1]%*%C0%*%t(Gt[,,1])) + D*(Gt[,,1]%*%C0%*%t(Gt[,,1]))
   
   ft[1] = t(Ft[,1])%*%at[,,1]
   Qt[1] = t(Ft[,1])%*%Rt[,,1]%*%Ft[,1] + S0
@@ -208,7 +184,7 @@ DPLDM = function(Y, x, regressora1, regressora2, lags, lag_temperatura, d, fd_ni
   for (t in 2:time){
     
     at[,,t] = Gt[,,t]%*%mt[,,t-1]
-    Rt[,,t] = Gt[,,t]%*%Ct[,,t-1]%*%t(Gt[,,t]) + (D_inv-diag(1, n))*(Gt[,,t]%*%Ct[,,t-1]%*%t(Gt[,,t]))
+    Rt[,,t] = Gt[,,t]%*%Ct[,,t-1]%*%t(Gt[,,t]) + D*(Gt[,,t]%*%Ct[,,t-1]%*%t(Gt[,,t]))
     
     ft[t] = t(Ft[,t])%*%at[,,t]
     Qt[t] = t(Ft[,t])%*%Rt[,,t]%*%Ft[,t] + St[t-1]
@@ -429,11 +405,10 @@ DPLDM = function(Y, x, regressora1, regressora2, lags, lag_temperatura, d, fd_ni
   }
   
   print(paste("Log-Verossimilhança Preditiva: ", SOMA(Qt,Y,ft)))
-  #  print(paste("Log-Verossimilhança a Posteriori: ", SOMA(1/phi,Y,y_estimado)))
   print(paste("Interval Score: ", sum(interval_score)))
   print(paste("DP do PM2.5: ", sd(regressora1)))
   print(paste("Efeito Médio da Temperatura: ", mts[n,,time]))
-  print(paste("IC 95%: ", c(quantile(amostra_psi, 0.025), quantile(amostra_psi, 0.975))))
+  print(paste("IC 95%  do Ef. da Temperatura: ", c(quantile(amostra_psi, 0.025), quantile(amostra_psi, 0.975))))
   # print(paste("Efeito médio acumulado: ", as.numeric(quantile(rowSums(amostra_beta[,ic_inf_beta > 0]), 0.5))))
   # print(paste("IC_inf_acumulado: ", as.numeric(quantile(rowSums(amostra_beta[,ic_inf_beta > 0]), 0.025))))
   # print(paste("IC_sup_acumulado: ", as.numeric(quantile(rowSums(amostra_beta[,ic_inf_beta > 0]), 0.975))))
