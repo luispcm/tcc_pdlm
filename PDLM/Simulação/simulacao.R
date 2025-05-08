@@ -77,8 +77,6 @@ abline(h= 0)
 
 #contruindo o St,i
 
-#grau do polinômio d = 3
-
 v = c(1:(q-1)) #vetor que multiplica cada matriz
 
 St0 = apply(X,1,sum)
@@ -174,17 +172,17 @@ nt = rep(NA,time)
 #Bloco do nível
 
 d1 = 0.99
-fd1 = 1/d1
+fd1 = 1/d1 - 1
 
 #Bloco da regressora
 
 d2 = 1
-fd2 = 1/d2
+fd2 = 1/d2 - 1
 
 #Juntando tudo
 
-D_inv = diag(c(fd1, rep(fd2, n-1)))
-D_inv
+D = diag(c(fd1, rep(fd2, n-1)))
+D
 
 ####### Filtro de Kalman
 
@@ -203,7 +201,7 @@ abline(v = 1/V_raiz, col = "red")
 
 # Priori em t=1
 at[,,1] = Gt[,,1]%*%m0
-Rt[,,1] = (Gt[,,1]%*%C0%*%t(Gt[,,1])) + (D_inv-diag(1, n))*(Gt[,,1]%*%C0%*%t(Gt[,,1]))
+Rt[,,1] = (Gt[,,1]%*%C0%*%t(Gt[,,1])) + D*(Gt[,,1]%*%C0%*%t(Gt[,,1]))
 
 # Previsão 1 passo-a-frente
 ft[1] = t(Ft[,1])%*%at[,,1]
@@ -225,7 +223,7 @@ for(t in 2:time){ # Passo 2 até o passo TIME
   
   # Priori em t
   at[,,t] = Gt[,,t]%*%mt[,,t-1]
-  Rt[,,t] = Gt[,,t]%*%Ct[,,t-1]%*%t(Gt[,,t]) + (D_inv-diag(1, n))*(Gt[,,t]%*%Ct[,,t-1]%*%t(Gt[,,t]))
+  Rt[,,t] = Gt[,,t]%*%Ct[,,t-1]%*%t(Gt[,,t]) + D*(Gt[,,t]%*%Ct[,,t-1]%*%t(Gt[,,t]))
   
   # Previsão 1 passo-a-frente
   ft[t] = t(Ft[,t])%*%at[,,t]
@@ -312,7 +310,7 @@ amostra_eta = amostra_theta[,c(2:n),time]
 plot(apply(amostra_eta, FUN = quantile, MARGIN = 2, probs = 0.5))
 points(eta_ver, col = "red")
 
-#amostra do vetor beta (nas análises seguintes eu pego sempre o último vetor estimado, pois como ele é constante, eu devo pegar o mais atualizado)
+#amostra do vetor beta (nas análises seguintes é pego sempre o último vetor estimado, pois como ele é constante, deve-se pegar o mais atualizado)
 
 #matriz auxiliar
 m = matrix(1, nrow = q,
@@ -429,8 +427,6 @@ abline(h= 0)
 
 #contruindo o St,i
 
-#grau do polinômio d = 2
-
 v = c(1:(q-1)) #vetor que multiplica cada matriz
 
 St0 = apply(X,1,sum)
@@ -527,17 +523,17 @@ nt = rep(NA,time)
 #Bloco do nível
 
 d1 = 0.99
-fd1 = 1/(d1)
+fd1 = 1/(d1) - 1
 
 #Bloco da regressora
 
 d2 = 1
-fd2 = 1/(d2)
+fd2 = 1/(d2) - 1
 
 #Juntando tudo
 
-D_inv = diag(c(fd1, rep(fd2, n-1)))
-D_inv
+D = diag(c(fd1, rep(fd2, n-1)))
+D
 
 ####### Filtro de Kalman
 
@@ -555,7 +551,7 @@ abline(v = 1/V_raiz, col = "red")
 #Passo t = 1
 
 at[,,1] = Gt[,,1]%*%m0
-Rt[,,1] = (Gt[,,1]%*%C0%*%t(Gt[,,1])) + (D_inv-diag(1, n))*(Gt[,,1]%*%C0%*%t(Gt[,,1]))
+Rt[,,1] = (Gt[,,1]%*%C0%*%t(Gt[,,1])) + D*(Gt[,,1]%*%C0%*%t(Gt[,,1]))
 
 ft[1] = t(Ft[,1])%*%at[,,1]
 Qt[1] = t(Ft[,1])%*%Rt[,,1]%*%Ft[,1] + S0
@@ -574,7 +570,7 @@ Ct[,,1] = St[1]/S0*(Rt[,,1] - At[,,1]%*%t(At[,,1])*Qt[1])
 for (t in 2:time){
   
   at[,,t] = Gt[,,t]%*%mt[,,t-1]
-  Rt[,,t] = Gt[,,t]%*%Ct[,,t-1]%*%t(Gt[,,t]) + (D_inv-diag(1, n))*(Gt[,,t]%*%Ct[,,t-1]%*%t(Gt[,,t]))
+  Rt[,,t] = Gt[,,t]%*%Ct[,,t-1]%*%t(Gt[,,t]) + D*(Gt[,,t]%*%Ct[,,t-1]%*%t(Gt[,,t]))
   
   ft[t] = t(Ft[,t])%*%at[,,t]
   Qt[t] = t(Ft[,t])%*%Rt[,,t]%*%Ft[,t] + St[t-1]
@@ -663,8 +659,6 @@ points(eta_ver, col = "red")
 apply(amostra_eta, MARGIN = 2, FUN = quantile, probs = 0.025)
 apply(amostra_eta, MARGIN = 2, FUN = quantile, probs = 0.5)
 apply(amostra_eta, MARGIN = 2, FUN = quantile, probs = 0.975)
-
-#amostra do vetor beta (nas análises seguintes eu pego sempre o último vetor estimado, pois como ele é constante, eu devo pegar o mais atualizado)
 
 #matriz auxiliar
 m = matrix(1, nrow = q,
@@ -775,7 +769,7 @@ SOMA(Qt,Y,ft)
 
 #grau do polinômio d = 3
 
-v = c(1:(q-1)) #vetor que multiplica cada matriz (vide as contas na folha)
+v = c(1:(q-1)) #vetor que multiplica cada matriz 
 
 St0 = apply(X,1,sum)
 St1 = X[,-1]%*%v^1
@@ -842,17 +836,17 @@ nt = rep(NA,time)
 #Bloco do nível
 
 d1 = 0.99
-fd1 = 1/(d1)
+fd1 = 1/(d1) - 1
 
 #Bloco da regressora
 
 d2 = 1
-fd2 = 1/(d2)
+fd2 = 1/(d2) - 1
 
 #Juntando tudo
 
-D_inv = diag(c(fd1, rep(fd2, n-1)))
-D_inv
+D = diag(c(fd1, rep(fd2, n-1)))
+D
 
 ####### Filtro de Kalman
 
@@ -870,7 +864,7 @@ abline(v = 1/V_raiz, col = "red")
 #Passo t = 1
 
 at[,,1] = Gt[,,1]%*%m0
-Rt[,,1] = (Gt[,,1]%*%C0%*%t(Gt[,,1])) + (D_inv-diag(1, n))*(Gt[,,1]%*%C0%*%t(Gt[,,1]))
+Rt[,,1] = (Gt[,,1]%*%C0%*%t(Gt[,,1])) + D*(Gt[,,1]%*%C0%*%t(Gt[,,1]))
 
 ft[1] = t(Ft[,1])%*%at[,,1]
 Qt[1] = t(Ft[,1])%*%Rt[,,1]%*%Ft[,1] + S0
@@ -889,7 +883,7 @@ Ct[,,1] = St[1]/S0*(Rt[,,1] - At[,,1]%*%t(At[,,1])*Qt[1])
 for (t in 2:time){
   
   at[,,t] = Gt[,,t]%*%mt[,,t-1]
-  Rt[,,t] = Gt[,,t]%*%Ct[,,t-1]%*%t(Gt[,,t]) + (D_inv-diag(1, n))*(Gt[,,t]%*%Ct[,,t-1]%*%t(Gt[,,t]))
+  Rt[,,t] = Gt[,,t]%*%Ct[,,t-1]%*%t(Gt[,,t]) + D*(Gt[,,t]%*%Ct[,,t-1]%*%t(Gt[,,t]))
   
   ft[t] = t(Ft[,t])%*%at[,,t]
   Qt[t] = t(Ft[,t])%*%Rt[,,t]%*%Ft[,t] + St[t-1]
@@ -976,8 +970,6 @@ points(eta_ver, col = "red")
 apply(amostra_eta, MARGIN = 2, FUN = quantile, probs = 0.025)
 apply(amostra_eta, MARGIN = 2, FUN = quantile, probs = 0.5)
 apply(amostra_eta, MARGIN = 2, FUN = quantile, probs = 0.975)
-
-#amostra do vetor beta (nas análises seguintes eu pego sempre o último vetor estimado, pois como ele é constante, eu devo pegar o mais atualizado)
 
 #matriz auxiliar
 m = matrix(1, nrow = q,
@@ -1107,7 +1099,7 @@ abline(h= 0)
 
 #grau do polinômio d = 3
 
-v = c(1:(q-1)) #vetor que multiplica cada matriz (vide as contas na folha)
+v = c(1:(q-1)) #vetor que multiplica cada matriz 
 
 St0 = apply(X,1,sum)
 St1 = X[,-1]%*%v^1
@@ -1202,17 +1194,17 @@ nt = rep(NA,time)
 #Bloco do nível
 
 d1 = 0.95
-fd1 = 1/(d1)
+fd1 = 1/(d1) - 1
 
 #Bloco da regressora
 
 d2 = 1
-fd2 = 1/(d2)
+fd2 = 1/(d2) - 1
 
 #Juntando tudo
 
-D_inv = diag(c(fd1, rep(fd2, n-1)))
-D_inv
+D = diag(c(fd1, rep(fd2, n-1)))
+D
 
 ####### Filtro de Kalman
 
@@ -1230,7 +1222,7 @@ abline(v = 1/V_raiz, col = "red")
 #Passo t = 1
 
 at[,,1] = Gt[,,1]%*%m0
-Rt[,,1] = (Gt[,,1]%*%C0%*%t(Gt[,,1])) + (D_inv-diag(1, n))*(Gt[,,1]%*%C0%*%t(Gt[,,1]))
+Rt[,,1] = (Gt[,,1]%*%C0%*%t(Gt[,,1])) + D*(Gt[,,1]%*%C0%*%t(Gt[,,1]))
 
 ft[1] = t(Ft[,1])%*%at[,,1]
 Qt[1] = t(Ft[,1])%*%Rt[,,1]%*%Ft[,1] + S0
@@ -1249,7 +1241,7 @@ Ct[,,1] = St[1]/S0*(Rt[,,1] - At[,,1]%*%t(At[,,1])*Qt[1])
 for (t in 2:time){
   
   at[,,t] = Gt[,,t]%*%mt[,,t-1]
-  Rt[,,t] =Gt[,,t]%*%Ct[,,t-1]%*%t(Gt[,,t]) + (D_inv-diag(1, n))*(Gt[,,t]%*%Ct[,,t-1]%*%t(Gt[,,t]))
+  Rt[,,t] =Gt[,,t]%*%Ct[,,t-1]%*%t(Gt[,,t]) + D*(Gt[,,t]%*%Ct[,,t-1]%*%t(Gt[,,t]))
   
   ft[t] = t(Ft[,t])%*%at[,,t]
   Qt[t] = t(Ft[,t])%*%Rt[,,t]%*%Ft[,t] + St[t-1]
@@ -1337,8 +1329,6 @@ amostra_eta = amostra_theta[,c(2:n),time]
 
 plot(apply(amostra_eta, FUN = quantile, MARGIN = 2, probs = 0.5))
 points(eta_ver, col = "red")
-
-#amostra do vetor beta (nas análises seguintes eu pego sempre o último vetor estimado, pois como ele é constante, eu devo pegar o mais atualizado)
 
 #matriz auxiliar
 m = matrix(1, nrow = q,
